@@ -7,6 +7,9 @@ class GlacierUploadFilePart():
         self.body = body
         self.byte_range = byte_range
 
+    def get_size(self):
+        return len(self.body)
+
     def get_byte_range(self):
         return self.byte_range
 

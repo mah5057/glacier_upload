@@ -42,24 +42,34 @@ class GlacierUploadFile():
 
     def _do_compute_parts(self, file_size_in_bytes, chunk_size_in_bytes):
 
+        number_of_chunks = file_size_in_bytes / chunk_size_in_bytes
+        final_chunk = file_size_in_bytes % chunk_size_in_bytes
+        print "File size: %s" % str(file_size_in_bytes)
+        print "Chunk size: %s" % str(chunk_size_in_bytes)
+        print "Final chunk size: %s" % str(final_chunk)
+        print "Number of chunks: %s" % str(number_of_chunks)
+
         with open(self.filename, 'rb') as f:
-            number_of_chunks = file_size_in_bytes / chunk_size_in_bytes
-            final_chunk = file_size_in_bytes % chunk_size_in_bytes
 
             # compute treehash using botocore.utils
             self.treehash = calculate_tree_hash(f)
 
-            # create array of GlacierUploadFilePart(s)
             start_of_range = 0
+
+            # the above calculate tree hash reads the file in 1 MiB chunks,
+            # so we need to seek back to byte 0
             f.seek(0)
             for x in range(0, number_of_chunks):
-                byte_range = "bytes %s-%s/*" % (start_of_range, start_of_range + chunk_size_in_bytes - 1)
+                print "Chunk: %s" % str(x)
+                byte_range = "bytes %s-%s/%s" % (start_of_range, start_of_range + chunk_size_in_bytes - 1, file_size_in_bytes)
+                print byte_range
                 body = f.read(chunk_size_in_bytes) 
                 self.parts.append(GlacierUploadFilePart(body, byte_range))
                 start_of_range += chunk_size_in_bytes
 
             if final_chunk:
-                byte_range = "bytes %s-%s/*" % (start_of_range, start_of_range + final_chunk)
+                byte_range = "bytes %s-%s/%s" % (start_of_range, start_of_range + final_chunk - 1, file_size_in_bytes)
+                print byte_range
                 body = f.read(final_chunk)
                 self.parts.append(GlacierUploadFilePart(body, byte_range))
 
