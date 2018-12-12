@@ -3,7 +3,7 @@ import sys
 import math
 
 from botocore.utils import calculate_tree_hash
-from glacier_upload_file_part import GlacierUploadFilePart
+from byte_range import ByteRange
 
 MiB = 1024 ** 2
 GiB = MiB * 1024
@@ -13,66 +13,61 @@ class GlacierUploadFile():
     def __init__(self, filename):
         self.filename = filename
         self.parts = []
-        self.treehash = None
         self.part_size = 0
         self.total_size_in_bytes = 0
-        self._compute_parts()
+        self._compute_byte_ranges()
 
     def get_part_size(self):
-        return str(self.part_size)
+        return self.part_size
 
     def get_treehash(self):
-        return self.treehash
+        treehash = ''
+        with open(self.filename, 'rb') as f:
+            treehash = calculate_tree_hash(f)
+        return treehash
 
     def get_parts(self):
         return self.parts
+    
+    def get_number_of_parts(self):
+        return len(self.parts)
 
     def get_total_size_in_bytes(self):
-        return str(self.total_size_in_bytes)
+        return self.total_size_in_bytes
 
-    def _compute_parts(self):
+    def _compute_byte_ranges(self):
         file_size_in_bytes = os.path.getsize(self.filename)
         self.total_size_in_bytes = file_size_in_bytes
-        if file_size_in_bytes > GiB:
+        if file_size_in_bytes > 4 * GiB:
+            self.part_size = 4 * GiB
+            self._do_compute_byte_ranges(file_size_in_bytes, 4 * GiB)
+        elif file_size_in_bytes > 3 * GiB:
+            self.part_size = 3 * GiB
+            self._do_compute_byte_ranges(file_size_in_bytes, 3 * GiB)
+        elif file_size_in_bytes > 2 * GiB:
+            self.part_size = 2 * GiB
+            self._do_compute_byte_ranges(file_size_in_bytes, 2 * GiB)
+        elif file_size_in_bytes > GiB:
             self.part_size = GiB
-            self._do_compute_parts(file_size_in_bytes, GiB)
+            self._do_compute_byte_ranges(file_size_in_bytes, GiB)
         else:
             self.part_size = MiB
-            self._do_compute_parts(file_size_in_bytes, MiB)
+            self._do_compute_byte_ranges(file_size_in_bytes, MiB)
 
-    def _do_compute_parts(self, file_size_in_bytes, chunk_size_in_bytes):
+    def _do_compute_byte_ranges(self, file_size_in_bytes, chunk_size_in_bytes):
 
         number_of_chunks = file_size_in_bytes / chunk_size_in_bytes
         final_chunk = file_size_in_bytes % chunk_size_in_bytes
-        print "File size: %s" % str(file_size_in_bytes)
-        print "Chunk size: %s" % str(chunk_size_in_bytes)
-        print "Final chunk size: %s" % str(final_chunk)
-        print "Number of chunks: %s" % str(number_of_chunks)
 
-        with open(self.filename, 'rb') as f:
+        start_of_range = 0
+        for _ in range(0, number_of_chunks):
+            self.parts.append(ByteRange(start_of_range, 
+                                        chunk_size_in_bytes,
+                                        file_size_in_bytes))
+            start_of_range += chunk_size_in_bytes
 
-            # compute treehash using botocore.utils
-            self.treehash = calculate_tree_hash(f)
-
-            start_of_range = 0
-
-            # the above calculate tree hash reads the file in 1 MiB chunks,
-            # so we need to seek back to byte 0
-            f.seek(0)
-            for x in range(0, number_of_chunks):
-                print "Chunk: %s" % str(x)
-                byte_range = "bytes %s-%s/%s" % (start_of_range, start_of_range + chunk_size_in_bytes - 1, file_size_in_bytes)
-                print byte_range
-                body = f.read(chunk_size_in_bytes) 
-                self.parts.append(GlacierUploadFilePart(body, byte_range))
-                start_of_range += chunk_size_in_bytes
-
-            if final_chunk:
-                byte_range = "bytes %s-%s/%s" % (start_of_range, start_of_range + final_chunk - 1, file_size_in_bytes)
-                print byte_range
-                body = f.read(final_chunk)
-                self.parts.append(GlacierUploadFilePart(body, byte_range))
-
-            if not f.read() == "":
-                raise Exception("EOF not reached with calculated byte ranges.")
+        if final_chunk:
+            self.parts.append(ByteRange(start_of_range,
+                                        final_chunk,
+                                        file_size_in_bytes))
 
