@@ -38,7 +38,6 @@ def upload_worker_process(byte_ranges, filename, upload_id):
                                             range=byte_range.get_range_string(), 
                                             uploadId=upload_id, 
                                             vaultName=VAULT)
-            print response
 
 number_of_workers = 3
 
@@ -78,46 +77,21 @@ for set_of_ranges in divided_ranges:
 for worker in upload_workers:
     worker.join()
 
+print "Waiting for treehash calculation..."
 treehash_p.join()
 
 # get treehash from the q
 treehash = q.get()
 
 # complete multipart upload after upload parts and treehas calculator join
-complete_mpu_response = glacier_client.complete_multipart_upload(accountId='-', vaultName=VAULT, uploadId=upload_id, archiveSize=str(f.get_total_size_in_bytes()), checksum=f.get_treehash())
-
-print "\nComplete response: " + str(complete_mpu_response)
-
-"""
-print "Uploading parts..."
-
-partno = 1
-for part in f.get_parts():
-    print "Part #%s" % str(partno)
-    print "size: %s" % str(part.get_size())
-    response = glacier_client.upload_multipart_part(accountId='-', body=part.get_body(), range=part.get_byte_range(), uploadId=upload_id, vaultName=VAULT)
-    partno += 1
-
 print "Completing multipart upload..."
-
-# complete multipart upload
-complete_mpu_response = glacier_client.complete_multipart_upload(accountId='-', vaultName=VAULT, uploadId=upload_id, archiveSize=str(f.get_total_size_in_bytes()), checksum=f.get_treehash())
+complete_mpu_response = glacier_client.complete_multipart_upload(accountId='-', 
+                                                                 vaultName=VAULT, 
+                                                                 uploadId=upload_id, 
+                                                                 archiveSize=str(f.get_total_size_in_bytes()), 
+                                                                 checksum=treehash)
 
 print "\nComplete response: " + str(complete_mpu_response)
-"""
-
-
-
-"""print "Total file size: %s" % str(f.get_total_size_in_bytes())
-print "Part size: %s" % str(f.get_part_size())
-
-for part in f.get_parts():
-    print "Seek to: %s" % str(part.get_starting_byte())
-    print "Chunk size: %s" % str(part.get_chunk_size())
-    print "Range string: %s" % part.get_range_string()
-
-print "Calculating treehash...""
-print "treehash: %s" % str(f.get_treehash())"""
 
 
 
