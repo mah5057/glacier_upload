@@ -1,5 +1,6 @@
 import sys
 import boto3
+import traceback
 from argparse import ArgumentParser
 from multiprocessing import Process, Queue, current_process
 
@@ -11,6 +12,10 @@ VAULT='examplevault'
 # client to initialize glacier
 session = boto3.Session(profile_name='default')
 glacier_client = session.client('glacier')
+
+################################################################
+# threading and helper commands
+################################################################
 
 # TODO: On resume, get uploaded parts and mark the byte range as uploaded (ByteRange.uploaded)
 
@@ -44,6 +49,10 @@ def upload_worker_process(byte_ranges, filename, upload_id):
 # => retrieve
 # => main()
 
+################################################################
+# main
+################################################################
+
 def main(args):
     """
     need argparse stuff for:
@@ -52,9 +61,45 @@ def main(args):
     rgbs retrieve --vault "vaultname"? --archive-id "archiveId"
     argparse -- https://docs.python.org/dev/library/argparse.html#sub-commands
     """
-    pass
+    parser = ArgumentParser()
+    subparsers = parser.add_subparsers()
 
+    # upload command definition
+    ###########################
+    upload_parser = subparsers.add_parser('upload')
+    upload_parser.add_argument('-v', '--vault', type=str, default='')
+    upload_parser.add_argument('-d', '--description', type=str, default='')
+    parser.add_argument('filepath', metavar='F', type=str, nargs='+',
+                    help='path to file to upload')
+    upload_parser.set_defaults(func=upload_command)
 
+    # TODO: get-jobs command
+
+    # TODO: retrieve command
+    
+    arguments = parser.parse_args(args)
+    arguments.func(arguments)
+
+################################################################
+# sub command methods
+################################################################
+
+def upload_command(args):
+    # now parse arguments and execute upload logic
+    print args
+
+################################################################
+# run main with sys args
+################################################################
+if __name__ == '__main__':
+    try:
+        main(sys.argv[1:])
+    except SystemExit, e:
+        if e.code == 0:
+            pass
+    except:
+        traceback.print_exc()
+"""
 number_of_workers = 8
 
 file_path = sys.argv[1]
@@ -109,7 +154,6 @@ complete_mpu_response = glacier_client.complete_multipart_upload(accountId='-',
                                                                  checksum=treehash)
 
 print "\nComplete response: " + str(complete_mpu_response)
-
-
+"""
 
 
