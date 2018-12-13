@@ -6,7 +6,6 @@ from multiprocessing import Process, Queue, current_process
 
 from glacier_upload_file import GlacierUploadFile
 
-
 VAULT='examplevault'
 
 # client to initialize glacier
@@ -14,7 +13,7 @@ session = boto3.Session(profile_name='default')
 glacier_client = session.client('glacier')
 
 ################################################################
-# threading and helper commands
+# threading and helper methods
 ################################################################
 
 # TODO: On resume, get uploaded parts and mark the byte range as uploaded (ByteRange.uploaded)
