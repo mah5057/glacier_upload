@@ -38,16 +38,13 @@ class GlacierUploadFile():
     def _compute_byte_ranges(self):
         file_size_in_bytes = os.path.getsize(self.filename)
         self.total_size_in_bytes = file_size_in_bytes
-        if file_size_in_bytes > 4 * GiB:
-            self.part_size = 4 * GiB
-            self._do_compute_byte_ranges(file_size_in_bytes, 4 * GiB)
-        elif file_size_in_bytes > 3 * GiB:
-            self.part_size = 3 * GiB
-            self._do_compute_byte_ranges(file_size_in_bytes, 3 * GiB)
-        elif file_size_in_bytes > 2 * GiB:
-            self.part_size = 2 * GiB
-            self._do_compute_byte_ranges(file_size_in_bytes, 2 * GiB)
-        elif file_size_in_bytes > GiB:
+        # if file_size_in_bytes > 4 * GiB:
+        #     self.part_size = 4 * GiB
+        #     self._do_compute_byte_ranges(file_size_in_bytes, 4 * GiB)
+        # elif file_size_in_bytes > 2 * GiB:
+        #     self.part_size = 2 * GiB
+        #     self._do_compute_byte_ranges(file_size_in_bytes, 2 * GiB)
+        if file_size_in_bytes > GiB:
             self.part_size = GiB
             self._do_compute_byte_ranges(file_size_in_bytes, GiB)
         else:

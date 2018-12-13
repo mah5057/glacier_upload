@@ -29,7 +29,6 @@ def upload_worker_process(byte_ranges, filename, upload_id):
     upload_multipart_part = glacier_client.upload_multipart_part
 
     with open(filename, 'rb') as f:
-
         for byte_range in byte_ranges:
             print "[%s] -- uploading (%s)" % (current_process().name, byte_range.get_range_string())
             f.seek(byte_range.get_starting_byte())
@@ -39,7 +38,7 @@ def upload_worker_process(byte_ranges, filename, upload_id):
                                             uploadId=upload_id, 
                                             vaultName=VAULT)
 
-number_of_workers = 3
+number_of_workers = 8
 
 file_path = sys.argv[1]
 
