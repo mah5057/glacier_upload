@@ -1,5 +1,6 @@
 import sys
 import boto3
+from argparse import ArgumentParser
 from multiprocessing import Process, Queue, current_process
 
 from glacier_upload_file import GlacierUploadFile
@@ -38,6 +39,22 @@ def upload_worker_process(byte_ranges, filename, upload_id):
                                             uploadId=upload_id, 
                                             vaultName=VAULT)
 
+# TODO: Need an arg parser 
+# => upload (resume local file?) (file, vault, archive_description, )
+# => retrieve
+# => main()
+
+def main(args):
+    """
+    need argparse stuff for:
+    rgbs upload --vault "vaultname" --description "archive description" <File>
+    rgbs get-jobs --finished --in-progress
+    rgbs retrieve --vault "vaultname"? --archive-id "archiveId"
+    argparse -- https://docs.python.org/dev/library/argparse.html#sub-commands
+    """
+    pass
+
+
 number_of_workers = 8
 
 file_path = sys.argv[1]
@@ -45,6 +62,7 @@ file_path = sys.argv[1]
 print "Preparing file for upload..."
 
 f = GlacierUploadFile(file_path)
+# divide byte ranges to upload for the workers
 divided_ranges = divvy_byte_ranges(f.get_parts(), number_of_workers)
 
 print "Initializing multipart upload to Amazon Glacier..."
