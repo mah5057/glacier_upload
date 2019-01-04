@@ -1,14 +1,40 @@
 import sys
+import json
 import boto3
 import traceback
 from argparse import ArgumentParser
 from multiprocessing import Process, Queue, current_process
 
+from pymongo import MongoClient
+from os.path import expanduser
 from glacier_upload_file import GlacierUploadFile
 
-# client to initialize glacier
-session = boto3.Session(profile_name='default')
-glacier_client = session.client('glacier')
+"""
+For readme later:
+sample config:
+{
+    "dbUri": "mongodb://..."
+}
+to be placed at ~/.gbs/db_config
+"""
+
+# connect to the database if config exists
+config_path = expanduser('~') + "/.gbs/db_config"
+with open(config_path, 'r') as f:
+    config = json.load(f)
+
+DB_CLIENT = None
+GLACIER_DB = None
+JOBS_COLLECTION = None
+ARCHIVES_COLLECTION = None
+
+if config.has_key('dbUri'):
+    DB_CLIENT = MongoClient(config['dbUri'])
+    GLACIER_DB = DB_CLIENT['glacier']
+    JOBS_COLLECTION = GLACIER_DB['jobs']
+    ARCHIVES_COLLECTION = GLACIER_DB['archives']
+else:
+    print "No database configuration found at %s, functionality will be limited..." % config_path
 
 ################################################################
 # threading and helper methods
@@ -25,7 +51,7 @@ def calculate_treehash_worker_process(upload_file, q):
     print "[%s] -- calculating treehash..." % current_process().name
     q.put(upload_file.get_treehash()) 
 
-def upload_worker_process(byte_ranges, filename, upload_id):
+def upload_worker_process(vault, byte_ranges, filename, upload_id):
     # each worker gets its own cnx to boto glacier
     session = boto3.Session(profile_name='default')
     glacier_client = session.client('glacier')
@@ -79,13 +105,17 @@ def main(args):
                     help='Path of file to upload')
     upload_parser.set_defaults(func=upload_command)
 
+    # TODO: delete-archive commmand
+
+    # TODO: get-archives command
+
+    # TODO: get-vaults command
+
     # TODO: get-jobs command
 
     # TODO: retrieve command
 
-    # TODO: get-archives / get-vaults commands?
-
-    # TODO: create-vault
+    # TODO: create-vault command
     
     arguments = parser.parse_args(args)
     arguments.func(arguments)
@@ -106,6 +136,9 @@ def upload_command(args):
         raise Exception("Too many arguments.")
     else:
         file_path = file_path[0]
+
+    session = boto3.Session(profile_name='default')
+    glacier_client = session.client('glacier')
 
     print "Preparing file for upload..."
 
@@ -136,7 +169,7 @@ def upload_command(args):
         # kick off uploader threads
         for set_of_ranges in divided_ranges:
             if set_of_ranges:
-                p = Process(target=upload_worker_process, args=(set_of_ranges, file_path, upload_id,))
+                p = Process(target=upload_worker_process, args=(vault, set_of_ranges, file_path, upload_id,))
                 upload_workers.append(p)
                 p.start()
 
@@ -160,7 +193,19 @@ def upload_command(args):
                                                                         archiveSize=str(f.get_total_size_in_bytes()), 
                                                                         checksum=treehash)
 
-        print "\nComplete response: " + str(complete_mpu_response)
+        if ARCHIVES_COLLECTION:
+            print "Saving to database..."
+            archive_doc = {
+                "_id": complete_mpu_response['archiveId'],
+                "description": description,
+                "vault": vault,
+                "checksum": complete_mpu_response['checksum'],
+                "location": complete_mpu_response['location']
+            }
+            ARCHIVES_COLLECTION.insert(archive_doc)
+            print "\nInserted to database: " + str(archive_doc)
+        else:
+            print "\nComplete response: " + str(complete_mpu_response)
     else:
         print "\nProcess to byte range mappings"
         print "------------------------------"
