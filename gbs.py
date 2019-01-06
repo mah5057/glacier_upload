@@ -28,12 +28,14 @@ DB_CLIENT = None
 GLACIER_DB = None
 JOBS_COLLECTION = None
 ARCHIVES_COLLECTION = None
+UPLOADS_COLLECTION = None
 
 if config.has_key('dbUri'):
     DB_CLIENT = MongoClient(config['dbUri'])
     GLACIER_DB = DB_CLIENT['glacier']
     JOBS_COLLECTION = GLACIER_DB['jobs']
     ARCHIVES_COLLECTION = GLACIER_DB['archives']
+    UPLOADS_COLLECTION = GLACIER_DB['uploads']
 else:
     print "No database configuration found at %s, functionality will be limited..." % config_path
 
@@ -43,10 +45,20 @@ else:
 
 # TODO: On resume, get uploaded parts and mark the byte range as uploaded (ByteRange.uploaded)
 
+def get_all_starting_byte_ranges(byte_ranges):
+    return [ byte_range.get_starting_byte() for byte_range in byte_ranges ]
+
 # partition byte ranges to distribute to workers
 # TODO: optimize number of workers?
 def partition_byte_ranges(byte_ranges, num_workers):
     return [byte_ranges[x::num_workers] for x in xrange(num_workers)]
+
+def get_remaining_byte_ranges(uploaded_byte_ranges, f):
+    remaining_byte_ranges = []
+    for byte_range in f.get_parts():
+        if byte_range.get_starting_byte() in uploaded_byte_ranges:
+            remaining_byte_ranges.append(byte_range)
+    return remaining_byte_ranges
 
 def get_long_id(short_id):
     archive_document = ARCHIVES_COLLECTION.find_one({"shortId": short_id})
@@ -57,11 +69,23 @@ def calculate_treehash_worker_process(upload_file, q):
     print "[%s] -- calculating treehash..." % current_process().name
     q.put(upload_file.get_treehash()) 
 
-def upload_worker_process(vault, byte_ranges, filename, upload_id):
+def upload_worker_process(vault, byte_ranges, filename, upload_id, resume):
     # each worker gets its own cnx to boto glacier
     session = boto3.Session(profile_name='default')
     glacier_client = session.client('glacier')
     upload_multipart_part = glacier_client.upload_multipart_part
+    uploads_collection = None
+    remaining_ranges_array = None
+
+    if ARCHIVES_COLLECTION:
+        # each worker get its own mongo cnx
+        if config.has_key('dbUri'):
+            db_client = MongoClient(config['dbUri'])
+            glacier_db = db_client['glacier']
+            uploads_collection = glacier_db['uploads']
+            remaining_ranges_array = uploads_collection.find_one({"_id": upload_id})['incomplete_byte_ranges']
+        else:
+            raise Exception("DB REQUIRED")
 
     with open(filename, 'rb') as f:
         for byte_range in byte_ranges:
@@ -72,6 +96,15 @@ def upload_worker_process(vault, byte_ranges, filename, upload_id):
                                             range=byte_range.get_range_string(), 
                                             uploadId=upload_id, 
                                             vaultName=vault)
+
+            if ARCHIVES_COLLECTION:
+                if response['ResponseMetadata']['HTTPStatusCode'] in [200,202,204]:
+                    subdoc_id = byte_range.get_range_string()
+                    remaining_ranges_array.remove(byte_range.get_starting_byte())
+                    uploads_collection.update({"_id": upload_id}, 
+                                            {"$set": 
+                                                {"incomplete_byte_ranges": remaining_ranges_array}
+                                                })
 
 # TODO: Need an arg parser 
 # => retrieve
@@ -100,6 +133,8 @@ def main(args):
                     help='Description of archive')
     upload_parser.add_argument('-w', '--workers', type=int, default=8,
                     help='Maximum number of workers to deploy')
+    upload_parser.add_argument('-r', '--resume', type=str, default=None,
+                    help='Specify an upload id to resume that upload')
     upload_parser.add_argument('--dry-run', action='store_true',
                     help='Will only print byte ranges if specified')
     upload_parser.add_argument('filepath', metavar='F', type=str, nargs='+',
@@ -120,6 +155,14 @@ def main(args):
                             help='Target archive id')
     delete_archives_parser.set_defaults(func=delete_archive_command)
 
+    # get-uploads command
+    get_uploads_parser = subparsers.add_parser('get-uploads')
+    get_uploads_parser.add_argument('--completed', action='store_true',
+                        help='Get completed uploads')
+    get_uploads_parser.add_argument('-i', '--id', type=str, default=None,
+                        help='Get upload with this id')
+    get_uploads_parser.set_defaults(func=get_uploads_command)
+
     # TODO: get-vaults command
 
     # TODO: get-jobs command
@@ -136,6 +179,11 @@ def main(args):
 ################################################################
 # sub command methods
 ################################################################
+
+def get_uploads_command(args):
+    _id = args.id
+
+    # do same as in list_archives
 
 def list_archives(args):
     # TODO: make this more maintainable
@@ -211,6 +259,7 @@ def upload_archive_command(args):
     num_workers = args.workers
     file_path = args.filepath
     dry_run = args.dry_run
+    resume = args.resume
 
     if len(file_path) > 1:
         raise Exception("Too many arguments.")
@@ -223,21 +272,39 @@ def upload_archive_command(args):
     print "Preparing file for upload..."
 
     f = GlacierUploadFile(file_path)
-    # divide byte ranges to upload for the workers
-    partitioned_ranges = partition_byte_ranges(f.get_parts(), num_workers)
+
+    if resume:
+        if UPLOADS_COLLECTION:
+            remaining_byte_ranges = UPLOADS_COLLECTION.find_one({"_id": resume})['incomplete_byte_ranges']
+            remaining_ranges = get_remaining_byte_ranges(remaining_byte_ranges, f)
+            partitioned_ranges = partition_byte_ranges(remaining_ranges, num_workers)
+            upload_id = resume
+        else:
+            raise Exception("DB REQUIRED")
+    else:
+        partitioned_ranges = partition_byte_ranges(f.get_parts(), num_workers)
 
     if not dry_run:
         print "Initializing multipart upload to Amazon Glacier...\n"
 
-        # initialize multipart upload
-        init_mpu_response = glacier_client.initiate_multipart_upload(
-                    accountId='-',
-                    vaultName=vault,
-                    archiveDescription=description,
-                    partSize=str(f.get_part_size()),
-                )
+        if not resume:
+            # initialize multipart upload
+            init_mpu_response = glacier_client.initiate_multipart_upload(
+                        accountId='-',
+                        vaultName=vault,
+                        archiveDescription=description,
+                        partSize=str(f.get_part_size()),
+                    )
 
-        upload_id = init_mpu_response['uploadId']
+            upload_id = init_mpu_response['uploadId']
+
+            all_starting_byte_ranges = get_all_starting_byte_ranges(f.get_parts())
+
+            UPLOADS_COLLECTION.insert({
+                "_id": upload_id,
+                "incomplete_byte_ranges": all_starting_byte_ranges,
+                "completed": False
+            })
 
         q = Queue()
         treehash_p = Process(target=calculate_treehash_worker_process, args=(f, q,))
@@ -246,10 +313,11 @@ def upload_archive_command(args):
         treehash_p.start()
         
         upload_workers = []
+
         # kick off uploader threads
         for set_of_ranges in partitioned_ranges:
             if set_of_ranges:
-                p = Process(target=upload_worker_process, args=(vault, set_of_ranges, file_path, upload_id,))
+                p = Process(target=upload_worker_process, args=(vault, set_of_ranges, file_path, upload_id, resume,))
                 upload_workers.append(p)
                 p.start()
 
@@ -286,6 +354,7 @@ def upload_archive_command(args):
                 "location": complete_mpu_response['location']
             }
             ARCHIVES_COLLECTION.insert(archive_doc)
+            UPLOADS_COLLECTION.update({"_id": upload_id}, {"$set": {"completed": True}})
             print "\nWritten to database: %s\n" % str(archive_doc)
         else:
             print "\nComplete response: %s\n" % str(complete_mpu_response)
