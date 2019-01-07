@@ -3,7 +3,7 @@ import json
 import boto3
 import traceback
 from argparse import ArgumentParser
-from multiprocessing import Process, Queue, current_process
+from multiprocessing import Process, Queue, current_process, RLock
 
 from random import randint
 from os.path import expanduser
@@ -69,7 +69,7 @@ def calculate_treehash_worker_process(upload_file, q):
     print "[%s] -- calculating treehash..." % current_process().name
     q.put(upload_file.get_treehash()) 
 
-def upload_worker_process(vault, byte_ranges, filename, upload_id, resume):
+def upload_worker_process(lock, vault, byte_ranges, filename, upload_id, resume):
     # each worker gets its own cnx to boto glacier
     session = boto3.Session(profile_name='default')
     glacier_client = session.client('glacier')
@@ -99,12 +99,20 @@ def upload_worker_process(vault, byte_ranges, filename, upload_id, resume):
 
             if ARCHIVES_COLLECTION:
                 if response['ResponseMetadata']['HTTPStatusCode'] in [200,202,204]:
+                    #print "[%s] -- waiting for lock..." % current_process().name
+                    lock.acquire()
+                    #print "[%s] -- lock acquired!" % current_process().name
+                    # Update remaining ranges
+                    remaining_ranges_array = uploads_collection.find_one({"_id": upload_id})['incomplete_byte_ranges']
                     subdoc_id = byte_range.get_range_string()
                     remaining_ranges_array.remove(byte_range.get_starting_byte())
+                    #print "[%s] -- remaining ranges: %s" % (current_process().name, remaining_ranges_array)
                     uploads_collection.update({"_id": upload_id}, 
                                             {"$set": 
                                                 {"incomplete_byte_ranges": remaining_ranges_array}
                                                 })
+                    lock.release()
+                    #print "[%s] -- lock released!" % current_process().name
 
 # TODO: Need an arg parser 
 # => retrieve
@@ -142,10 +150,10 @@ def main(args):
     upload_parser.set_defaults(func=upload_archive_command)
 
     # list-archives command definition
-    list_archives_parser = subparsers.add_parser('list-archives')
-    list_archives_parser.add_argument('-v', '--vault', type=str, default='',
+    list_archives_command_parser = subparsers.add_parser('list-archives')
+    list_archives_command_parser.add_argument('-v', '--vault', type=str, default='',
                             help='Specify vault from which to display archives list')
-    list_archives_parser.set_defaults(func=list_archives)
+    list_archives_command_parser.set_defaults(func=list_archives_command)
 
     # delete-archive commmand
     delete_archives_parser = subparsers.add_parser('delete-archive')
@@ -183,9 +191,9 @@ def main(args):
 def get_uploads_command(args):
     _id = args.id
 
-    # do same as in list_archives
+    # do same as in list_archives_command
 
-def list_archives(args):
+def list_archives_command(args):
     # TODO: make this more maintainable
     vault = args.vault
 
@@ -314,10 +322,11 @@ def upload_archive_command(args):
         
         upload_workers = []
 
+        lock = RLock()
         # kick off uploader threads
         for set_of_ranges in partitioned_ranges:
             if set_of_ranges:
-                p = Process(target=upload_worker_process, args=(vault, set_of_ranges, file_path, upload_id, resume,))
+                p = Process(target=upload_worker_process, args=(lock, vault, set_of_ranges, file_path, upload_id, resume,))
                 upload_workers.append(p)
                 p.start()
 
