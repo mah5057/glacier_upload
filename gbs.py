@@ -1,6 +1,7 @@
 import sys
 import json
 import boto3
+import datetime
 import traceback
 from argparse import ArgumentParser
 from multiprocessing import Process, Queue, current_process, RLock
@@ -29,6 +30,7 @@ GLACIER_DB = None
 JOBS_COLLECTION = None
 ARCHIVES_COLLECTION = None
 UPLOADS_COLLECTION = None
+VAULTS_COLLECTION = None
 
 if config.has_key('dbUri'):
     DB_CLIENT = MongoClient(config['dbUri'])
@@ -36,6 +38,7 @@ if config.has_key('dbUri'):
     JOBS_COLLECTION = GLACIER_DB['jobs']
     ARCHIVES_COLLECTION = GLACIER_DB['archives']
     UPLOADS_COLLECTION = GLACIER_DB['uploads']
+    VAULTS_COLLECTION = GLACIER_DB['vaults']
 else:
     print "No database configuration found at %s, functionality will be limited..." % config_path
 
@@ -159,13 +162,21 @@ def main(args):
                         help='Get completed uploads')
     list_uploads_parser.set_defaults(func=list_uploads_command)
 
+    # create-vault command
+    create_vault_parser = subparsers.add_parser('create-vault')
+    create_vault_parser.add_argument('name', metavar='N', type=str, nargs='+',
+                        help='Name of new vault.')
+    create_vault_parser.set_defaults(func=create_vault_command)
+
+    # list-vaults command
+    list_vaults_parser = subparsers.add_parser('list-vaults')
+    list_vaults_parser.add_argument('-n', '--name', type=str, default='',
+                        help='Find vaults with this name (exact match)')
+    list_vaults_parser.set_defaults(func=list_vaults_command)
+
     # TODO: list-jobs command
 
     # TODO: retrieve-archive command
-
-    # TODO: create-vault command
-
-    # TODO: list-vaults command
 
     arguments = parser.parse_args(args)
     arguments.func(arguments)
@@ -173,6 +184,72 @@ def main(args):
 ################################################################
 # sub command methods
 ################################################################
+
+#######################################
+# create-vault command
+#######################################
+def create_vault_command(args):
+    name = args.name
+
+    if len(name) > 1:
+        raise Exception("Too many arguments.")
+    else:
+        name = name[0]
+
+    session = boto3.Session(profile_name='default')
+    glacier_client = session.client('glacier')
+
+    create_vault_response = glacier_client.create_vault(vaultName=name)
+
+    if VAULTS_COLLECTION:
+        vault_doc = {
+            "vaultName": name,
+            "createdOn": datetime.datetime.utcnow()
+        }
+        VAULTS_COLLECTION.insert(vault_doc)
+    
+    print "\nSuccessfully created vault '%s'\n" % name
+
+#######################################
+# list-vaults command
+#######################################
+def list_vaults_command(args):
+    name = args.name
+
+    header = "Name                    createdOn (UTC)"
+    print "\n" + header
+    print "-" * (len(header) + 20)
+    if VAULTS_COLLECTION:
+        rows = []
+
+        if name:
+            vaults = VAULTS_COLLECTION.find({"vaultName": name})
+        else:
+            vaults = VAULTS_COLLECTION.find()
+
+        for vault in vaults:
+            vault_name = vault['vaultName']
+            date_created = vault['createdOn']
+
+            date_created = date_created.strftime("%Y-%m-%d %H:%M")
+
+            display_vn = vault_name[:20]
+            display_date = date_created[:30]
+
+            display_vn = display_vn + "..." if len(display_vn) < len(vault_name) else display_vn
+            display_date = display_date + "..." if len(display_date) < len(date_created) else display_date
+
+            row = "%s%s%s%s" % (display_vn, " " * (24 - len(display_vn)), display_date, " " * (34 - len(display_date)))
+
+            rows.append(row)
+
+        for row in rows:
+            print row
+
+        print "\n"
+
+    else:
+        raise Exception("DB REQUIRED")
 
 #######################################
 # list-uploads command
