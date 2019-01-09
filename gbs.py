@@ -137,6 +137,8 @@ def main(args):
                     help='Specify an upload id to resume that upload')
     upload_parser.add_argument('--dry-run', action='store_true',
                     help='Will only print byte ranges if specified')
+    upload_parser.add_argument('-c', '--chunk-size', type=int, default=None,
+                    help='Specify custom chunk size')
     upload_parser.add_argument('filepath', metavar='F', type=str, nargs='+',
                     help='Path of file to upload')
     upload_parser.set_defaults(func=upload_archive_command)
@@ -326,7 +328,6 @@ def list_uploads_command(args):
 # list-archives command
 #######################################
 def list_archives_command(args):
-    # TODO: add filename column
     # TODO: make this more maintainable
     vault = args.vault
 
@@ -415,6 +416,7 @@ def upload_archive_command(args):
     file_path = args.filepath
     dry_run = args.dry_run
     resume = args.resume
+    chunk_size = args.chunk_size
 
     if len(file_path) > 1:
         raise Exception("Too many arguments.")
@@ -426,7 +428,7 @@ def upload_archive_command(args):
 
     print "\nPreparing file for upload..."
 
-    f = GlacierUploadFile(file_path)
+    f = GlacierUploadFile(file_path, chunk_size)
 
     if resume:
         if UPLOADS_COLLECTION:
@@ -536,6 +538,7 @@ def upload_archive_command(args):
                 print "\nProcess %d" % process
                 for one_range in set_of_ranges:
                     print "    %s" % one_range.get_range_string()
+        print "\nTotal byte ranges to upload: %d\n" % len(f.parts)
 
 ################################################################
 # run main with sys args
