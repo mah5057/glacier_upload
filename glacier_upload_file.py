@@ -10,11 +10,12 @@ GiB = MiB * 1024
 
 class GlacierUploadFile():
 
-    def __init__(self, filename):
+    def __init__(self, filename, custom_chunk_size=None):
         self.filename = filename
         self.parts = []
         self.part_size = 0
         self.total_size_in_bytes = 0
+        self.custom_chunk_size = custom_chunk_size
         self._compute_byte_ranges()
 
     def get_part_size(self):
@@ -38,18 +39,16 @@ class GlacierUploadFile():
     def _compute_byte_ranges(self):
         file_size_in_bytes = os.path.getsize(self.filename)
         self.total_size_in_bytes = file_size_in_bytes
-        # if file_size_in_bytes > 4 * GiB:
-        #     self.part_size = 4 * GiB
-        #     self._do_compute_byte_ranges(file_size_in_bytes, 4 * GiB)
-        # elif file_size_in_bytes > 2 * GiB:
-        #     self.part_size = 2 * GiB
-        #     self._do_compute_byte_ranges(file_size_in_bytes, 2 * GiB)
-        if file_size_in_bytes > GiB:
-            self.part_size = GiB
-            self._do_compute_byte_ranges(file_size_in_bytes, GiB)
+        if self.custom_chunk_size:
+            self.part_size = self.custom_chunk_size
+            self._do_compute_byte_ranges(file_size_in_bytes, self.custom_chunk_size)
         else:
-            self.part_size = MiB
-            self._do_compute_byte_ranges(file_size_in_bytes, MiB)
+            if file_size_in_bytes > GiB:
+                self.part_size = GiB
+                self._do_compute_byte_ranges(file_size_in_bytes, GiB)
+            else:
+                self.part_size = MiB
+                self._do_compute_byte_ranges(file_size_in_bytes, MiB)
 
     def _do_compute_byte_ranges(self, file_size_in_bytes, chunk_size_in_bytes):
 
