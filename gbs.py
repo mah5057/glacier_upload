@@ -330,7 +330,7 @@ def list_archives_command(args):
     # TODO: make this more maintainable
     vault = args.vault
 
-    header = "ID                    description                            vault"
+    header = "ID                    description                            filename                    vault"
     print "\n" + header
     print "-" * (len(header) + 20)
     if ARCHIVES_COLLECTION:
@@ -346,17 +346,21 @@ def list_archives_command(args):
             short_id = archive["shortId"]
             description = archive["description"]
             vault = archive["vault"]
+            filename = archive["filename"]
 
             display_si = short_id[:18]
             display_description = description[:34]
             display_vault = vault[:21]
+            display_filename = filename[:24]
 
             display_si = display_si + "..." if len(display_si) < len(short_id) else display_si
             display_description = display_description + "..." if len(display_description) < len(description) else description
             display_vault = display_vault + "..." if len(display_vault) < len(vault) else display_vault
+            display_filename = display_filename + "..." if len(display_filename) < len(filename) else display_filename
 
-            row =  "%s%s%s%s%s%s" % (display_si, " " * (22 - len(display_si)), 
+            row =  "%s%s%s%s%s%s%s%s" % (display_si, " " * (22 - len(display_si)), 
                                      display_description, " " * (39 - len(display_description)), 
+                                     display_filename, " " * (28 - len(display_filename)),
                                      display_vault, " " * (25 - len(display_vault)))
             
             rows.append(row)
