@@ -1,14 +1,13 @@
 import sys
 import json
 import boto3
-import datetime
 import traceback
 from argparse import ArgumentParser
 from multiprocessing import Process, Queue, current_process, RLock
 
-from random import randint
 from os.path import expanduser
 from pymongo import MongoClient
+from datetime import date, datetime
 from glacier_upload_file import GlacierUploadFile
 
 """
@@ -45,6 +44,11 @@ else:
 ################################################################
 # threading and helper methods
 ################################################################
+
+def json_serial(obj):
+    if isinstance(obj, (datetime,date)):
+        return obj.strftime("%Y-%m-%d %H:%M")
+    raise TypeError ("Type %s not serializable" % type(obj))
 
 def get_all_starting_byte_ranges(byte_ranges):
     return [ byte_range.get_starting_byte() for byte_range in byte_ranges ]
@@ -199,7 +203,7 @@ def show_archive_command(args):
 
     if ARCHIVES_COLLECTION:
         archive_doc = ARCHIVES_COLLECTION.find_one({"shortId": short_id})
-        print json.dumps(archive_doc, indent=4)
+        print json.dumps(archive_doc, indent=4, default=json_serial)
     else:
         raise Exception("DB REQUIRED")
 
@@ -222,7 +226,7 @@ def create_vault_command(args):
     if VAULTS_COLLECTION:
         vault_doc = {
             "vaultName": name,
-            "createdOn": datetime.datetime.utcnow()
+            "createdOn": datetime.utcnow()
         }
         VAULTS_COLLECTION.insert(vault_doc)
     
@@ -448,13 +452,14 @@ def upload_archive_command(args):
 
             all_starting_byte_ranges = get_all_starting_byte_ranges(f.get_parts())
 
-            se_index = randint(1,15)
+            se_index = 0
             short_upload_id = upload_id[se_index:se_index + 15]
             UPLOADS_COLLECTION.insert({
                 "_id": upload_id,
                 "shortId": short_upload_id,
                 "incomplete_byte_ranges": all_starting_byte_ranges,
                 "filename": file_path,
+                "startedOn": datetime.utcnow(),
                 "completed": False
             })
 
@@ -499,7 +504,7 @@ def upload_archive_command(args):
                                                                         checksum=treehash)
 
         if ARCHIVES_COLLECTION:
-            se_index = randint(1,15)
+            se_index = 0
             # short id because the archive id from Glacier is too long for displaying
             short_id = complete_mpu_response['archiveId'][se_index:se_index + 15]
             print "\nWriting document with ID: %s to database..." % short_id
@@ -510,10 +515,12 @@ def upload_archive_command(args):
                 "vault": vault,
                 "checksum": complete_mpu_response['checksum'],
                 "location": complete_mpu_response['location'],
-                "filename": file_path.split('/')[-1]
+                "filename": file_path.split('/')[-1],
+                "uploadedOn": datetime.utcnow()
             }
             ARCHIVES_COLLECTION.insert(archive_doc)
-            UPLOADS_COLLECTION.update({"_id": upload_id}, {"$set": {"completed": True}})
+            UPLOADS_COLLECTION.update({"_id": upload_id}, {"$set": 
+                {"completed": True, "finishedOn": datetime.utcnow()}})
             print "\nWritten to database: %s\n" % str(archive_doc)
         else:
             print "\nComplete response: %s\n" % str(complete_mpu_response)
