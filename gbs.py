@@ -60,7 +60,7 @@ def get_remaining_byte_ranges(uploaded_byte_ranges, f):
             remaining_byte_ranges.append(byte_range)
     return remaining_byte_ranges
 
-def get_long_id(short_id):
+def get_long_archive_id(short_id):
     archive_document = ARCHIVES_COLLECTION.find_one({"shortId": short_id})
     if archive_document:
         return archive_document["_id"]
@@ -174,6 +174,12 @@ def main(args):
                         help='Find vaults with this name (exact match)')
     list_vaults_parser.set_defaults(func=list_vaults_command)
 
+    # show-archive command
+    show_archive_parser = subparsers.add_parser('show-archive')
+    show_archive_parser.add_argument('archiveId', metavar='A', type=str, nargs='+',
+                        help='Show the document for this archive')
+    show_archive_parser.set_defaults(func=show_archive_command)
+
     # TODO: list-jobs command
 
     # TODO: retrieve-archive command
@@ -184,6 +190,23 @@ def main(args):
 ################################################################
 # sub command methods
 ################################################################
+
+#######################################
+# show-archive command
+#######################################
+def show_archive_command(args):
+    short_id = args.archiveId
+
+    if len(short_id) > 1:
+        raise Exception("Too many arguments.")
+    else:
+        short_id = short_id[0]
+
+    if ARCHIVES_COLLECTION:
+        archive_doc = ARCHIVES_COLLECTION.find_one({"shortId": short_id})
+        print json.dumps(archive_doc, indent=4)
+    else:
+        raise Exception("DB REQUIRED")
 
 #######################################
 # create-vault command
@@ -304,6 +327,7 @@ def list_uploads_command(args):
 # list-archives command
 #######################################
 def list_archives_command(args):
+    # TODO: add filename column
     # TODO: make this more maintainable
     vault = args.vault
 
@@ -352,14 +376,16 @@ def list_archives_command(args):
 def delete_archive_command(args):
     vault = args.vault
     short_id = args.shortId
-
-    _id = get_long_id(short_id)
     
     if not vault:
         if ARCHIVES_COLLECTION:
-            vault = ARCHIVES_COLLECTION.find_one({"_id": _id})['vault']
+            archive_doc = ARCHIVES_COLLECTION.find_one({"shortId": short_id})
+            vault = archive_doc['vault']
+            _id = archive_doc['_id']
         else:
             raise Exception("DB OR VAULT NAME REQUIRED: cannot determine vault without name.")
+    else:
+        _id = short_id
 
     session = boto3.Session(profile_name='default')
     glacier_client = session.client('glacier')
@@ -437,9 +463,9 @@ def upload_archive_command(args):
                 "completed": False
             })
 
-            print "Beginning upload %s...\n"  % short_upload_id
+            print "Beginning upload %s of '%s' to vault '%s'...\n"  % (short_upload_id, file_path.split('/')[-1], vault)
         else:
-            print "Resuming upload %s...\n" % resume
+            print "Resuming upload %s of '%s' to vault '%s'...\n" % (resume, file_path.split('/')[-1], vault)
 
         q = Queue()
         treehash_p = Process(target=calculate_treehash_worker_process, args=(f, q,))
@@ -488,7 +514,8 @@ def upload_archive_command(args):
                 "description": description,
                 "vault": vault,
                 "checksum": complete_mpu_response['checksum'],
-                "location": complete_mpu_response['location']
+                "location": complete_mpu_response['location'],
+                "filename": file_path.split('/')[-1]
             }
             ARCHIVES_COLLECTION.insert(archive_doc)
             UPLOADS_COLLECTION.update({"_id": upload_id}, {"$set": {"completed": True}})
