@@ -60,11 +60,6 @@ def get_remaining_byte_ranges(uploaded_byte_ranges, f):
             remaining_byte_ranges.append(byte_range)
     return remaining_byte_ranges
 
-def get_long_archive_id(short_id):
-    archive_document = ARCHIVES_COLLECTION.find_one({"shortId": short_id})
-    if archive_document:
-        return archive_document["_id"]
-
 def calculate_treehash_worker_process(upload_file, q):
     print "[%s] -- calculating treehash..." % current_process().name
     q.put(upload_file.get_treehash()) 
