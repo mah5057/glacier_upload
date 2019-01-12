@@ -178,6 +178,12 @@ def main(args):
                         help='Show the document for this archive')
     show_archive_parser.set_defaults(func=show_archive_command)
 
+    # show-upload command
+    show_upload_parser = subparsers.add_parser('show-upload')
+    show_upload_parser.add_argument('uploadId', metavar='A', type=str, nargs='+',
+                        help='Show the document for this upload')
+    show_upload_parser.set_defaults(func=show_upload_command)
+
     # TODO: list-jobs command
 
     # TODO: retrieve-archive command
@@ -203,6 +209,23 @@ def show_archive_command(args):
     if ARCHIVES_COLLECTION:
         archive_doc = ARCHIVES_COLLECTION.find_one({"shortId": short_id})
         print json.dumps(archive_doc, indent=4, default=json_serial)
+    else:
+        raise Exception("DB REQUIRED")
+
+#######################################
+# show-upload command
+#######################################
+def show_upload_command(args):
+    short_id = args.uploadId
+
+    if len(short_id) > 1:
+        raise Exception("Too many arguments.")
+    else:
+        short_id = short_id[0]
+
+    if UPLOADS_COLLECTION:
+        upload_doc = UPLOADS_COLLECTION.find_one({"shortId": short_id})
+        print json.dumps(upload_doc, indent=4, default=json_serial)
     else:
         raise Exception("DB REQUIRED")
 
@@ -381,7 +404,7 @@ def delete_archive_command(args):
     if not vault:
         if ARCHIVES_COLLECTION:
             archive_doc = ARCHIVES_COLLECTION.find_one({"shortId": short_id})
-            vault = archive_doc['vault']
+            vault = archive_doc['vaultName']
             _id = archive_doc['_id']
         else:
             raise Exception("DB OR VAULT NAME REQUIRED: cannot determine vault without name.")
