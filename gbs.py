@@ -117,9 +117,6 @@ def upload_worker_process(lock, vault, byte_ranges, filename, upload_id, resume)
 
 def main(args):
     """
-    need argparse stuff for:
-    gbs get-jobs --finished --in-progress
-    gbs retrieve --vault "vaultname"? --archive-id "archiveId"
     argparse -- https://docs.python.org/dev/library/argparse.html#sub-commands
     """
     parser = ArgumentParser()
