@@ -338,7 +338,7 @@ def list_archives_command(args):
         rows = []
         
         if vault:
-            archives = ARCHIVES_COLLECTION.find({"vault": vault,
+            archives = ARCHIVES_COLLECTION.find({"vaultName": vault,
                                                 "deleted": {"$exists": False}})
         else:
             archives = ARCHIVES_COLLECTION.find({"deleted": {"$exists": False}})
@@ -346,7 +346,7 @@ def list_archives_command(args):
         for archive in archives:
             short_id = archive["shortId"]
             description = archive["description"]
-            vault = archive["vault"]
+            vault = archive["vaultName"]
             filename = archive["filename"]
 
             display_si = short_id[:18]
@@ -437,6 +437,10 @@ def upload_archive_command(args):
             remaining_ranges = get_remaining_byte_ranges(remaining_byte_ranges, f)
             partitioned_ranges = partition_byte_ranges(remaining_ranges, num_workers)
             upload_id = upload_2_resume["_id"]
+            vault = upload_2_resume["vaultName"]
+            description = upload_2_resume["description"]
+            num_workers = upload_2_resume["numWorkers"]
+            chunk_size = upload_2_resume["chunkSize"]
         else:
             raise Exception("DB REQUIRED")
     else:
@@ -462,6 +466,10 @@ def upload_archive_command(args):
             short_upload_id = upload_id[se_index:se_index + 15]
             UPLOADS_COLLECTION.insert({
                 "_id": upload_id,
+                "vaultName": vault,
+                "numWorkers": num_workers,
+                "description": description,
+                "chunkSize": chunk_size,
                 "shortId": short_upload_id,
                 "incomplete_byte_ranges": all_starting_byte_ranges,
                 "filename": file_path,
@@ -518,7 +526,7 @@ def upload_archive_command(args):
                 "_id": complete_mpu_response['archiveId'],
                 "shortId": short_id,
                 "description": description,
-                "vault": vault,
+                "vaultName": vault,
                 "checksum": complete_mpu_response['checksum'],
                 "location": complete_mpu_response['location'],
                 "filename": file_path.split('/')[-1],
