@@ -8,7 +8,7 @@ from multiprocessing import Process, Queue, current_process, RLock
 from os.path import expanduser
 from pymongo import MongoClient
 from datetime import date, datetime
-from parts.glacier_upload_file import GlacierUploadFile
+from utils.glacier_upload_file import GlacierUploadFile
 
 """
 For readme later:
