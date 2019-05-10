@@ -1,7 +1,7 @@
 AmazonGlacierBackUpSystem
 =========================
 
-Amazon Glacier BackUp System (AGBUS) is a cli tool that works with Amazon Glacier to allow for simplified archive upload to Amazon Glacier, as well as metadata storage in a hosted mongoDB solution.
+Amazon Glacier BackUp System (AGBUS) is a cli tool that provides an interface to Amazon Glacier that is simpler than the aws cli. It can also be pointed to a mongoDB instance to store information about vaults, archives and more.
 
  Installation:
  -------------
