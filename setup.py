@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
      name='agbus',  
-     version='0.1',
+     version='0.2',
      scripts=['bin/agbus'] ,
      author="Matt Hardock",
      author_email="mah5057@gmail.com",
