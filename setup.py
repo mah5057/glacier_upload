@@ -5,14 +5,14 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
      name='agbus',  
-     version='0.3',
+     version='0.4',
      scripts=['bin/agbus'] ,
      author="Matt Hardock",
      author_email="mah5057@gmail.com",
      description="A simplified Amazon Glacier cli, integrated with a database.",
      long_description=long_description,
    long_description_content_type="text/markdown",
-   url="http://www.matthardock.com/",
+   url="https://github.com/mah5057/glacier_upload",
      packages=setuptools.find_packages(),
      install_requires=[
         'boto3==1.9.50',
